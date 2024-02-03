@@ -49,7 +49,7 @@ module "blog_alb" {
 
   name    = "blog_alb"
   vpc_id  = "data.aws_vpc.default.id"
-  subnets = module.aws_vpc.public.subnets
+  subnets = data.aws_vpc.public.subnets
 
   # Security Group
   security_group_ingress_rules = {
