@@ -43,39 +43,69 @@ module "blog_sg" {
   egress_cidr_blocks = ["0.0.0.0/0"]
 }
 
-resource "aws_security_group" "blog" {
-  name        = "blog"
-  description = "Allow http and https ingress. Allow everything egress"
 
-  vpc_id = data.aws_vpc.default.id
-}
+module "blog_alb" {
+  source = "terraform-aws-modules/alb/aws"
 
-resource "aws_security_group_rule" "blog_http_in" {
-  type        = "ingress"
-  from_port   = "80"
-  to_port     = "80"
-  protocol    = "tcp"
-  cidr_blocks = ["0.0.0.0/0"]
+  name    = "blog_alb"
+  vpc_id  = "data.aws_vpc.default.id"
+  subnets = module.aws_vpc.public.subnets
 
-  security_group_id = aws_security_group.blog.id
-}
+  # Security Group
+  security_group_ingress_rules = {
+    all_http = {
+      from_port   = 80
+      to_port     = 80
+      ip_protocol = "tcp"
+      description = "HTTP web traffic"
+      cidr_ipv4   = "0.0.0.0/0"
+    }
+    all_https = {
+      from_port   = 443
+      to_port     = 443
+      ip_protocol = "tcp"
+      description = "HTTPS web traffic"
+      cidr_ipv4   = "0.0.0.0/0"
+    }
+  }
+  security_group_egress_rules = {
+    all = {
+      ip_protocol = "-1"
+      cidr_ipv4   = "10.0.0.0/16"
+    }
+  }
 
-resource "aws_security_group_rule" "blog_https_in" {
-  type        = "ingress"
-  from_port   = "443"
-  to_port     = "443"
-  protocol    = "tcp"
-  cidr_blocks = ["0.0.0.0/0"]
+  listeners = {
+    ex-http-https-redirect = {
+      port     = 80
+      protocol = "HTTP"
+      redirect = {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+    ex-https = {
+      port            = 443
+      protocol        = "HTTPS"
+      certificate_arn = "arn:aws:iam::123456789012:server-certificate/test_cert-123456789012"
 
-  security_group_id = aws_security_group.blog.id
-}
+      forward = {
+        target_group_key = "ex-instance"
+      }
+    }
+  }
 
-resource "aws_security_group_rule" "blog_everything_out" {
-  type        = "egress"
-  from_port   = 0
-  to_port     = 0
-  protocol    = "-1"
-  cidr_blocks = ["0.0.0.0/0"]
+  target_groups = {
+    ex-instance = {
+      name_prefix      = "h1"
+      protocol         = "HTTP"
+      port             = 80
+      target_type      = "instance"
+    }
+  }
 
-  security_group_id = aws_security_group.blog.id
+  tags = {
+    Environment = "dev"
+  }
 }
